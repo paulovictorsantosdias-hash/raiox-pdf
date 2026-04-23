@@ -4,6 +4,7 @@ from typing import Dict, List
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -12,7 +13,10 @@ from reportlab.pdfgen import canvas
 from PIL import Image
 
 app = FastAPI(title="Raio-X PDF")
+OUTPUT_DIR = "pdfs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+app.mount("/files", StaticFiles(directory=OUTPUT_DIR), name="files")
 # ===============================
 # CONFIG
 # ===============================
@@ -266,8 +270,11 @@ def health():
 @app.post("/generate-pdf")
 def generate_pdf(data: SimuladoRequest):
     arquivo = gerar_pdf(data)
-    return FileResponse(
-        arquivo,
-        media_type="application/pdf",
-        filename=os.path.basename(arquivo)
+    nome_arquivo = os.path.basename(arquivo)
+
+    return {
+        "success": True,
+        "filename": nome_arquivo,
+        "download_url": f"https://raiox-pdf.onrender.com/files/{nome_arquivo}"
+    }
     )
