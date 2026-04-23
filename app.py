@@ -27,18 +27,12 @@ MARGIN_RIGHT = 1.0 * cm
 # Cabeçalho
 LOGO_WIDTH_CM = 5.6
 LOGO_HEIGHT_CM = 2.4
-
-# AQUI FOI AJUSTADO:
-# logo mais alta na página
 LOGO_TOP_MARGIN_CM = 0.18
-
-# distância entre base da logo e linha
 LOGO_GAP_CM = 0.22
 
 HEADER_LINE_Y = PAGE_H - (
     (LOGO_TOP_MARGIN_CM + LOGO_HEIGHT_CM + LOGO_GAP_CM) * cm
 )
-
 HEADER_TEXT_Y = HEADER_LINE_Y - 0.42 * cm
 
 # Conteúdo
@@ -126,8 +120,6 @@ def draw_header(pdf: canvas.Canvas, concurso: str, banca: str):
             draw_h = ih * scale
 
             x = (PAGE_W - draw_w) / 2
-
-            # LOGO MAIS ALTA
             y = PAGE_H - (LOGO_TOP_MARGIN_CM * cm) - draw_h
 
             pdf.drawImage(
@@ -139,18 +131,16 @@ def draw_header(pdf: canvas.Canvas, concurso: str, banca: str):
                 preserveAspectRatio=True,
                 mask="auto"
             )
-        except:
+        except Exception:
             pass
 
-    # linha
     pdf.setStrokeColor(colors.black)
     pdf.setLineWidth(0.8)
     pdf.line(MARGIN_LEFT, HEADER_LINE_Y, PAGE_W - MARGIN_RIGHT, HEADER_LINE_Y)
 
-    # textos
     pdf.setFont(FONT_HEADER, 8.5)
     pdf.drawString(MARGIN_LEFT, HEADER_TEXT_Y, concurso)
-    pdf.drawRightString(PAGE_W - MARGIN_RIGHT, HEADER_TEXT_Y, banca)
+    pdf.drawRightString(MARGIN_RIGHT * -1 + PAGE_W, HEADER_TEXT_Y, banca)
 
 
 # ===============================
@@ -163,11 +153,7 @@ def draw_footer(pdf: canvas.Canvas, concurso: str, pagina: int):
 
     pdf.setFont(FONT_HEADER, 8.5)
     pdf.drawString(MARGIN_LEFT, FOOTER_TEXT_Y, concurso)
-    pdf.drawRightString(
-        PAGE_W - MARGIN_RIGHT,
-        FOOTER_TEXT_Y,
-        f"Página {pagina}"
-    )
+    pdf.drawRightString(PAGE_W - MARGIN_RIGHT, FOOTER_TEXT_Y, f"Página {pagina}")
 
 
 # ===============================
@@ -178,7 +164,6 @@ def gerar_pdf(data: SimuladoRequest) -> str:
     path = os.path.join(OUTPUT_DIR, filename)
 
     pdf = canvas.Canvas(path, pagesize=A4)
-
     pagina = 1
 
     def nova_pagina():
@@ -194,11 +179,11 @@ def gerar_pdf(data: SimuladoRequest) -> str:
     y = CONTENT_TOP_Y
     disciplina_atual = None
 
-    for q in data.questoes:
-
+    for i, q in enumerate(data.questoes, start=1):
         if y < CONTENT_BOTTOM_Y + 80:
             nova_pagina()
             y = CONTENT_TOP_Y
+            disciplina_atual = None
 
         if q.disciplina != disciplina_atual:
             pdf.setFont(FONT_BODY_BOLD, 12)
@@ -210,7 +195,7 @@ def gerar_pdf(data: SimuladoRequest) -> str:
         pdf.drawString(
             MARGIN_LEFT,
             y,
-            f"{q.numero} - ({data.banca} – {data.concurso})"
+            f"{i} - ({data.banca} – {data.concurso})"
         )
         y -= 14
 
@@ -236,6 +221,30 @@ def gerar_pdf(data: SimuladoRequest) -> str:
                     y -= 11
 
         y -= 10
+
+    # ===============================
+    # GABARITO FINAL
+    # ===============================
+    nova_pagina()
+    y = CONTENT_TOP_Y
+
+    pdf.setFont(FONT_BODY_BOLD, 13)
+    pdf.drawString(MARGIN_LEFT, y, "GABARITO")
+    y -= 22
+
+    pdf.setFont(FONT_BODY, 10)
+
+    for i, q in enumerate(data.questoes, start=1):
+        if y < CONTENT_BOTTOM_Y + 20:
+            nova_pagina()
+            y = CONTENT_TOP_Y
+            pdf.setFont(FONT_BODY_BOLD, 13)
+            pdf.drawString(MARGIN_LEFT, y, "GABARITO")
+            y -= 22
+            pdf.setFont(FONT_BODY, 10)
+
+        pdf.drawString(MARGIN_LEFT, y, f"{i} - {q.gabarito}")
+        y -= 12
 
     pdf.save()
     return path
