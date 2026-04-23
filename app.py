@@ -1,9 +1,9 @@
 import os
 import textwrap
+import uuid
 from typing import Dict, List
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from reportlab.lib import colors
@@ -13,52 +13,37 @@ from reportlab.pdfgen import canvas
 from PIL import Image
 
 app = FastAPI(title="Raio-X PDF")
-OUTPUT_DIR = "pdfs"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-app.mount("/files", StaticFiles(directory=OUTPUT_DIR), name="files")
-# ===============================
-# CONFIG
-# ===============================
-OUTPUT_DIR = "output"
+OUTPUT_DIR = "pdfs"
 LOGO_PATH = "logo_raiox.png"
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+app.mount("/files", StaticFiles(directory=OUTPUT_DIR), name="files")
 
 PAGE_W, PAGE_H = A4
 
 MARGIN_LEFT = 1.0 * cm
 MARGIN_RIGHT = 1.0 * cm
 
-# Cabeçalho
 LOGO_WIDTH_CM = 5.6
 LOGO_HEIGHT_CM = 2.4
 LOGO_TOP_MARGIN_CM = 0.18
 LOGO_GAP_CM = 0.22
 
-HEADER_LINE_Y = PAGE_H - (
-    (LOGO_TOP_MARGIN_CM + LOGO_HEIGHT_CM + LOGO_GAP_CM) * cm
-)
+HEADER_LINE_Y = PAGE_H - ((LOGO_TOP_MARGIN_CM + LOGO_HEIGHT_CM + LOGO_GAP_CM) * cm)
 HEADER_TEXT_Y = HEADER_LINE_Y - 0.42 * cm
 
-# Conteúdo
 CONTENT_TOP_Y = HEADER_TEXT_Y - 0.9 * cm
 CONTENT_BOTTOM_Y = 2.1 * cm
 
-# Rodapé
 FOOTER_LINE_Y = 1.55 * cm
 FOOTER_TEXT_Y = 1.0 * cm
 
-# Fontes
 FONT_HEADER = "Helvetica"
-FONT_HEADER_BOLD = "Helvetica-Bold"
 FONT_BODY = "Helvetica"
 FONT_BODY_BOLD = "Helvetica-Bold"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-
-# ===============================
-# MODELS
-# ===============================
 class Question(BaseModel):
     disciplina: str
     numero: int
@@ -76,9 +61,6 @@ class SimuladoRequest(BaseModel):
     questoes: List[Question]
 
 
-# ===============================
-# HELPERS
-# ===============================
 def sanitize_filename(text: str) -> str:
     allowed = []
     for ch in text.lower().strip():
@@ -86,27 +68,31 @@ def sanitize_filename(text: str) -> str:
             allowed.append(ch)
         elif ch in (" ", "-", "_"):
             allowed.append("_")
-    return "".join(allowed).strip("_") or "arquivo"
+    name = "".join(allowed)
+    while "__" in name:
+        name = name.replace("__", "_")
+    return name.strip("_") or "arquivo"
 
 
-def wrap_text(text: str, width_chars: int):
-    return textwrap.wrap(
-        text,
-        width=width_chars,
-        break_long_words=False,
-        break_on_hyphens=False
-    )
+def wrap_text(text: str, width_chars: int) -> List[str]:
+    if not text:
+        return [""]
+    lines = []
+    for paragraph in str(text).split("\n"):
+        wrapped = textwrap.wrap(
+            paragraph,
+            width=width_chars,
+            break_long_words=False,
+            break_on_hyphens=False
+        )
+        lines.extend(wrapped if wrapped else [""])
+    return lines
 
 
 def get_logo():
-    if os.path.exists(LOGO_PATH):
-        return LOGO_PATH
-    return None
+    return LOGO_PATH if os.path.exists(LOGO_PATH) else None
 
 
-# ===============================
-# HEADER
-# ===============================
 def draw_header(pdf: canvas.Canvas, concurso: str, banca: str):
     logo = get_logo()
 
@@ -119,7 +105,6 @@ def draw_header(pdf: canvas.Canvas, concurso: str, banca: str):
             box_h = LOGO_HEIGHT_CM * cm
 
             scale = min(box_w / iw, box_h / ih)
-
             draw_w = iw * scale
             draw_h = ih * scale
 
@@ -143,28 +128,28 @@ def draw_header(pdf: canvas.Canvas, concurso: str, banca: str):
     pdf.line(MARGIN_LEFT, HEADER_LINE_Y, PAGE_W - MARGIN_RIGHT, HEADER_LINE_Y)
 
     pdf.setFont(FONT_HEADER, 8.5)
+    pdf.setFillColor(colors.black)
     pdf.drawString(MARGIN_LEFT, HEADER_TEXT_Y, concurso)
-    pdf.drawRightString(MARGIN_RIGHT * -1 + PAGE_W, HEADER_TEXT_Y, banca)
+    pdf.drawRightString(PAGE_W - MARGIN_RIGHT, HEADER_TEXT_Y, banca)
 
 
-# ===============================
-# FOOTER
-# ===============================
 def draw_footer(pdf: canvas.Canvas, concurso: str, pagina: int):
     pdf.setStrokeColor(colors.black)
     pdf.setLineWidth(0.7)
     pdf.line(MARGIN_LEFT, FOOTER_LINE_Y, PAGE_W - MARGIN_RIGHT, FOOTER_LINE_Y)
 
     pdf.setFont(FONT_HEADER, 8.5)
+    pdf.setFillColor(colors.black)
     pdf.drawString(MARGIN_LEFT, FOOTER_TEXT_Y, concurso)
     pdf.drawRightString(PAGE_W - MARGIN_RIGHT, FOOTER_TEXT_Y, f"Página {pagina}")
 
 
-# ===============================
-# PDF
-# ===============================
 def gerar_pdf(data: SimuladoRequest) -> str:
-    filename = f"{sanitize_filename(data.concurso)}.pdf"
+    filename = (
+        f"{sanitize_filename(data.concurso)}_"
+        f"{sanitize_filename(data.cargo)}_"
+        f"{uuid.uuid4().hex[:8]}.pdf"
+    )
     path = os.path.join(OUTPUT_DIR, filename)
 
     pdf = canvas.Canvas(path, pagesize=A4)
@@ -191,11 +176,13 @@ def gerar_pdf(data: SimuladoRequest) -> str:
 
         if q.disciplina != disciplina_atual:
             pdf.setFont(FONT_BODY_BOLD, 12)
+            pdf.setFillColor(colors.black)
             pdf.drawString(MARGIN_LEFT, y, q.disciplina.upper())
             y -= 18
             disciplina_atual = q.disciplina
 
         pdf.setFont(FONT_BODY_BOLD, 10)
+        pdf.setFillColor(colors.black)
         pdf.drawString(
             MARGIN_LEFT,
             y,
@@ -206,9 +193,9 @@ def gerar_pdf(data: SimuladoRequest) -> str:
         pdf.setFont(FONT_BODY, 8)
         pdf.setFillColor(colors.HexColor("#444444"))
         pdf.drawString(MARGIN_LEFT, y, f"[Origem: {q.origem}]")
-        pdf.setFillColor(colors.black)
         y -= 12
 
+        pdf.setFillColor(colors.black)
         pdf.setFont(FONT_BODY, 9)
 
         for linha in wrap_text(q.texto, 95):
@@ -219,20 +206,18 @@ def gerar_pdf(data: SimuladoRequest) -> str:
 
         for letra in ["A", "B", "C", "D", "E"]:
             if letra in q.alternativas:
-                txt = f"({letra}) {q.alternativas[letra]}"
-                for linha in wrap_text(txt, 92):
+                texto_alt = f"({letra}) {q.alternativas[letra]}"
+                for linha in wrap_text(texto_alt, 92):
                     pdf.drawString(MARGIN_LEFT, y, linha)
                     y -= 11
 
         y -= 10
 
-    # ===============================
-    # GABARITO FINAL
-    # ===============================
     nova_pagina()
     y = CONTENT_TOP_Y
 
     pdf.setFont(FONT_BODY_BOLD, 13)
+    pdf.setFillColor(colors.black)
     pdf.drawString(MARGIN_LEFT, y, "GABARITO")
     y -= 22
 
@@ -254,9 +239,6 @@ def gerar_pdf(data: SimuladoRequest) -> str:
     return path
 
 
-# ===============================
-# ROTAS
-# ===============================
 @app.get("/")
 def root():
     return {"status": "online"}
@@ -277,4 +259,3 @@ def generate_pdf(data: SimuladoRequest):
         "filename": nome_arquivo,
         "download_url": f"https://raiox-pdf.onrender.com/files/{nome_arquivo}"
     }
-    )
